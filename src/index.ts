@@ -9,3 +9,4 @@ export * from "./sender.js";
 export * from "./store/index.js";
 export * from "./providers/index.js";
 export * from "./webhooks/index.js";
+export * from "./html/index.js";

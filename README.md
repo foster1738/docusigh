@@ -152,3 +152,60 @@ src/
 test/                  Vitest suite covering every failure mode above
 examples/basic.ts      runnable demo
 ```
+
+## Bulletproof HTML emails
+
+Sending reliably is only half the job; the HTML also has to *render* in clients
+that ignore modern CSS (Outlook's Word engine, Gmail's style stripping). The
+`html/` module produces "bulletproof" markup — table layouts, fully inlined
+styles, MSO conditionals, VML buttons, a hidden preheader, dark-mode hints —
+and escapes every caller-supplied value.
+
+```ts
+import { EmailSender, renderSigningInvitation, toEmailMessage, ResendProvider } from "@docusigh/email";
+
+const rendered = renderSigningInvitation({
+  senderName: "Acme Legal",
+  signerName: "Sam Signer",
+  documentName: "Mutual NDA",
+  signUrl: "https://app.docusigh.com/sign/9f2c1a",
+  message: "Thanks for partnering with us.",
+  expiresAt: "March 1, 2026",
+  footer: { lines: ["DocuSigh Inc."], address: "123 Market St, San Francisco, CA", unsubscribeUrl: "https://app.docusigh.com/u/9f2c1a" },
+});
+
+const message = toEmailMessage(rendered, {
+  from: { email: "noreply@docusigh.com", name: "DocuSigh" },
+  to: [{ email: "signer@example.com", name: "Sam Signer" }],
+  subject: "Please sign: Mutual NDA",
+  tags: { envelope: "9f2c1a" },
+});
+
+const sender = new EmailSender({ providers: [new ResendProvider({ apiKey: process.env.RESEND_API_KEY! })] });
+await sender.enqueue(message, { idempotencyKey: "envelope:9f2c1a:invite:signer@example.com" });
+```
+
+`renderBulletproofEmail(input)` renders arbitrary block content (headings,
+text with a safe `**bold**` / `*italic*` / `[link](url)` subset, buttons,
+images, callouts, dividers). Both helpers return `{ html, text }`; the
+plaintext part is generated for you.
+
+### Hosted composer (GitHub Pages)
+
+`docs/index.html` is a self-contained composer that renders bulletproof HTML
+**live in the browser** using the exact same code as the sender (bundled to
+`docs/app.bundle.js`), so the preview and the sent email cannot drift. It lets
+you edit content and branding, switch between desktop/mobile preview, view the
+generated HTML and plaintext, and copy or download the result. Nothing is
+uploaded — all rendering is client-side.
+
+The `.github/workflows/pages.yml` workflow tests, rebuilds the bundle, and
+deploys `docs/` to GitHub Pages on every push to `main`. To enable it once:
+**Settings → Pages → Build and deployment → Source: GitHub Actions**. The
+composer is then served at `https://foster1738.github.io/docusigh/`.
+
+Rebuild the bundle locally after changing the renderer:
+
+```bash
+npm run build:browser   # regenerates docs/app.bundle.js
+```
