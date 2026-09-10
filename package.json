@@ -1,0 +1,45 @@
+{
+  "name": "@docusigh/email",
+  "version": "0.1.0",
+  "description": "Bulletproof transactional email sender: durable outbox, retries with jittered backoff, provider fallback, circuit breakers, rate limiting, idempotency, dead-lettering, and bounce suppression.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src/store/schema.sql"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src test",
+    "example": "tsx examples/basic.ts"
+  },
+  "dependencies": {
+    "nodemailer": "^6.9.16",
+    "zod": "^3.24.2"
+  },
+  "optionalDependencies": {
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/nodemailer": "^6.4.17",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
