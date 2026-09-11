@@ -31,6 +31,15 @@ export interface BulkSendOptions {
   campaignId: string;
   /** Milliseconds between enqueues, to stay within provider rate limits. Default 0. */
   perMessageDelayMs?: number;
+  /**
+   * Batch pacing, so you can send within a provider's rate limits: after every
+   * `batchSize` messages, wait `pauseMs` before continuing. Both numbers are
+   * yours to choose — e.g. `{ batchSize: 2, pauseMs: 10_000 }` sends two, waits
+   * ten seconds, sends two more, and so on.
+   */
+  pacing?: { batchSize: number; pauseMs: number };
+  /** Injectable sleep, for tests. Defaults to a real timer. */
+  sleep?: (ms: number) => Promise<void>;
   metadata?: Record<string, unknown>;
 }
 
@@ -58,6 +67,9 @@ export async function sendBulk(
   options: BulkSendOptions,
 ): Promise<BulkSendResult> {
   const result: BulkSendResult = { campaignId: options.campaignId, enqueued: [], failed: [] };
+  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const pacing = normalizePacing(options.pacing);
+  let sincePause = 0;
 
   for (const recipient of recipients) {
     const ctx = { recipient, ...(template.globals ? { globals: template.globals } : {}) };
@@ -83,8 +95,25 @@ export async function sendBulk(
       result.failed.push({ email: recipient.email, error: err instanceof Error ? err.message : String(err) });
     }
     if (options.perMessageDelayMs && options.perMessageDelayMs > 0) {
-      await new Promise((r) => setTimeout(r, options.perMessageDelayMs));
+      await sleep(options.perMessageDelayMs);
+    }
+    // Batch pacing: after every `batchSize` messages, wait `pauseMs`.
+    if (pacing) {
+      sincePause += 1;
+      if (sincePause >= pacing.batchSize) {
+        sincePause = 0;
+        await sleep(pacing.pauseMs);
+      }
     }
   }
   return result;
+}
+
+function normalizePacing(pacing: BulkSendOptions["pacing"]): { batchSize: number; pauseMs: number } | null {
+  if (!pacing) return null;
+  const batchSize = Math.floor(pacing.batchSize);
+  const pauseMs = Math.floor(pacing.pauseMs);
+  if (!Number.isFinite(batchSize) || batchSize < 1) throw new Error("pacing.batchSize must be a positive integer");
+  if (!Number.isFinite(pauseMs) || pauseMs < 0) throw new Error("pacing.pauseMs must be zero or more");
+  return { batchSize, pauseMs };
 }

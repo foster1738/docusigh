@@ -57,3 +57,22 @@ describe("sendBulk", () => {
     expect(provider.sent[0]?.message.html).toContain("&lt;script&gt;");
   });
 });
+
+describe("sendBulk pacing", () => {
+  it("waits pauseMs after every batchSize messages", async () => {
+    const { sender } = setup();
+    const recipients = ["a", "b", "c", "d", "e"].map((n) => ({ email: `${n}@x.com`, fields: {} }));
+    const pauses: number[] = [];
+    const sleep = async (ms: number) => { pauses.push(ms); };
+    await sendBulk(sender, template, recipients, { campaignId: "paced", pacing: { batchSize: 2, pauseMs: 10_000 }, sleep });
+    // 5 recipients, pause after #2 and #4 → two 10s pauses.
+    expect(pauses).toEqual([10_000, 10_000]);
+  });
+
+  it("rejects invalid pacing numbers", async () => {
+    const { sender } = setup();
+    const recipients = [{ email: "a@x.com", fields: {} }];
+    await expect(sendBulk(sender, template, recipients, { campaignId: "c", pacing: { batchSize: 0, pauseMs: 100 } })).rejects.toThrow(/batchSize/);
+    await expect(sendBulk(sender, template, recipients, { campaignId: "c", pacing: { batchSize: 2, pauseMs: -1 } })).rejects.toThrow(/pauseMs/);
+  });
+});

@@ -330,3 +330,38 @@ configured. The sender does not spoof identities, rotate relays to evade limits,
 vary subjects or content to dodge spam filters, or fabricate invoice/reference
 numbers. Deliverability comes from authentication, a clean list, and honouring
 unsubscribes and bounces.
+
+## Pacing bulk sends
+
+Control your own send rate with `pacing`: after every `batchSize` messages,
+wait `pauseMs`. Both numbers are yours to choose.
+
+```ts
+await sendBulk(sender, template, recipients, {
+  campaignId: "2026-09-invoices",
+  pacing: { batchSize: 2, pauseMs: 10_000 }, // send 2, wait 10s, repeat
+});
+```
+
+Use this (and per-provider rate limits) to stay **within** each provider's
+published limits. For the actual delivery rate, set a rate limit on each
+provider; the worker enforces it:
+
+```ts
+new EmailSender({
+  providers: [smtpA, smtpB],
+  rateLimits: { "smtp-a": { perSecond: 5 }, "smtp-b": { perSecond: 5 } },
+});
+```
+
+### Running several SMTP relays
+
+Register each SMTP relay you are authorised to use as a provider with its own
+rate limit. When one reaches its configured limit, the sender moves to the next
+and defers if all are at capacity, so load is spread across relays **within each
+one's real limit**. That is the supported way to use multiple SMTPs.
+
+What the sender deliberately does not do is blind round-robin rotation that
+spreads volume across accounts to slip under each provider's per-account limits
+or blocklists. That is filter/limit evasion, and it is how spam is sent. Set
+each relay's true limit and stay within it instead.
