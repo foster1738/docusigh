@@ -6,8 +6,7 @@ import {
   escapeHtml,
   inlineFormat,
   renderBulletproofEmail,
-  renderSigningCompleted,
-  renderSigningInvitation,
+  renderSimpleEmail,
   renderText,
   safeColor,
   safeUrl,
@@ -57,14 +56,14 @@ describe("inlineFormat", () => {
 });
 
 const sample = (): BulletproofEmailInput => ({
-  preheader: "Please review and sign your document.",
-  header: { name: "DocuSigh" },
+  preheader: "Your monthly newsletter is here.",
+  header: { name: "Example" },
   blocks: [
-    { type: "heading", text: "Sign your document" },
+    { type: "heading", text: "This month at Example" },
     { type: "text", text: "Hi Sam," },
-    { type: "button", text: "Review & Sign", url: "https://docusigh.test/sign/abc" },
+    { type: "button", text: "Read more", url: "https://example.com/news/abc" },
   ],
-  footer: { lines: ["DocuSigh Inc."], address: "1 Market St, San Francisco, CA", unsubscribeUrl: "https://docusigh.test/u/abc" },
+  footer: { lines: ["Example Inc."], address: "1 Market St, San Francisco, CA", unsubscribeUrl: "https://example.com/u/abc" },
 });
 
 describe("renderBulletproofEmail", () => {
@@ -87,7 +86,7 @@ describe("renderBulletproofEmail", () => {
   });
 
   it("renders a hidden preheader with the preview text", () => {
-    expect(html).toContain("Please review and sign your document.");
+    expect(html).toContain("Your monthly newsletter is here.");
     expect(html).toContain("display:none");
   });
 
@@ -97,9 +96,9 @@ describe("renderBulletproofEmail", () => {
   });
 
   it("produces a readable plaintext alternative", () => {
-    expect(text).toContain("Sign your document");
-    expect(text).toContain("Review & Sign: https://docusigh.test/sign/abc");
-    expect(text).toContain("DocuSigh Inc.");
+    expect(text).toContain("This month at Example");
+    expect(text).toContain("Read more: https://example.com/news/abc");
+    expect(text).toContain("Example Inc.");
     expect(text).not.toContain("<");
   });
 
@@ -148,45 +147,44 @@ describe("renderBulletproofEmail", () => {
   });
 });
 
-describe("templates", () => {
-  it("renders a signing invitation with the sign URL in the button and body", () => {
-    const { html, text } = renderSigningInvitation({
-      senderName: "Acme Legal",
-      signerName: "Sam Signer",
-      documentName: "Lease Agreement",
-      signUrl: "https://docusigh.test/sign/xyz",
-      message: "Looking forward to working with you.",
-      expiresAt: "March 1, 2026",
+describe("renderSimpleEmail", () => {
+  it("renders heading, greeting, body and a call-to-action button", () => {
+    const { html, text } = renderSimpleEmail({
+      heading: "Your order has shipped",
+      greeting: "Hi Sam,",
+      body: "Your package is on its way and should arrive **Friday**.\n\nTrack it any time using the button below.",
+      button: { text: "Track your order", url: "https://shop.example.com/track/abc" },
+      header: { name: "Example Shop" },
+      footer: { lines: ["Example Shop"], address: "1 Market St, San Francisco, CA" },
     });
-    expect(html).toContain("Acme Legal has requested your signature");
-    expect(html).toContain("Review &amp; Sign Document");
-    expect(html).toContain("https://docusigh.test/sign/xyz");
-    expect(html).toContain("Looking forward to working with you.");
-    expect(text).toContain("expires on March 1, 2026");
+    expect(html).toContain("Your order has shipped");
+    expect(html).toContain("Hi Sam,");
+    expect(html).toContain("<strong>Friday</strong>");
+    expect(html).toContain("Track your order");
+    expect(html).toContain("https://shop.example.com/track/abc");
+    expect(html).toContain("v:roundrect"); // bulletproof button
+    expect(text).toContain("Track your order: https://shop.example.com/track/abc");
   });
 
-  it("renders a completion receipt", () => {
-    const { html } = renderSigningCompleted({
-      documentName: "Lease Agreement",
-      downloadUrl: "https://docusigh.test/download/xyz",
-    });
-    expect(html).toContain("fully signed");
-    expect(html).toContain("Download Signed Document");
+  it("works with body only, deriving a preheader", () => {
+    const { html } = renderSimpleEmail({ body: "# Welcome aboard\n\nThanks for signing up." });
+    expect(html).toContain("Welcome aboard");
+    expect(html).toContain("Thanks for signing up.");
   });
 });
 
 describe("toEmailMessage + sender integration", () => {
   it("produces a message that passes validation and sends", async () => {
-    const rendered = renderSigningInvitation({
-      senderName: "Acme Legal",
-      documentName: "Lease Agreement",
-      signUrl: "https://docusigh.test/sign/xyz",
+    const rendered = renderSimpleEmail({
+      heading: "Welcome to Example",
+      body: "Thanks for joining. [Get started](https://example.com/start)",
+      header: { name: "Example" },
     });
     const message = toEmailMessage(rendered, {
-      from: { email: "noreply@docusigh.test", name: "DocuSigh" },
-      to: [{ email: "signer@example.com" }],
-      subject: "Please sign: Lease Agreement",
-      tags: { envelope: "xyz" },
+      from: { email: "noreply@example.com", name: "Example" },
+      to: [{ email: "user@example.com" }],
+      subject: "Welcome to Example",
+      tags: { campaign: "welcome" },
     });
     expect(() => validateMessage(message)).not.toThrow();
     expect(message.html).toContain("<!DOCTYPE html");
@@ -196,6 +194,6 @@ describe("toEmailMessage + sender integration", () => {
     const sender = new EmailSender({ providers: [provider] });
     const record = await sender.send(message);
     expect(record.status).toBe("sent");
-    expect(provider.sent[0]?.message.html).toContain("v:roundrect");
+    expect(provider.sent[0]?.message.html).toContain("https://example.com/start");
   });
 });

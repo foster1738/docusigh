@@ -5,7 +5,8 @@
  * drift apart.
  */
 export { renderBulletproofEmail, renderText, inlineFormat } from "./html/render.js";
-export { renderSigningInvitation, renderSigningCompleted } from "./html/templates.js";
+export { renderSimpleEmail } from "./html/templates.js";
+export { blocksFromText } from "./html/markdown.js";
 export { escapeHtml, safeUrl, safeColor } from "./html/escape.js";
 export { DEFAULT_THEME } from "./html/types.js";
 export type { BulletproofEmailInput, EmailBlock, EmailTheme, RenderedEmail } from "./html/types.js";

@@ -1,93 +1,54 @@
+import { blocksFromText } from "./markdown.js";
 import { renderBulletproofEmail } from "./render.js";
 import type { BulletproofEmailInput, EmailBlock, RenderedEmail } from "./types.js";
 
-export interface SigningInvitationInput {
-  /** Name shown to the signer, e.g. "Sam Signer". */
-  signerName?: string;
-  /** Name of the person/org requesting the signature. */
-  senderName: string;
-  /** Human title of the document/envelope. */
-  documentName: string;
-  /** The signing URL the button links to. */
-  signUrl: string;
-  /** Optional personal message from the sender. */
-  message?: string;
-  /** ISO date or human string; shown as a deadline callout when present. */
-  expiresAt?: string;
+export interface SimpleEmailInput {
+  /** Optional bold heading at the top of the email. */
+  heading?: string;
+  /** Optional greeting line, e.g. "Hi Sam,". */
+  greeting?: string;
+  /**
+   * Body copy. Blank lines separate paragraphs; `**bold**`, `*italic*` and
+   * `[label](https://url)` are supported, and a lone `[Label](url)` line
+   * becomes a button.
+   */
+  body: string;
+  /** Optional call-to-action button rendered after the body. */
+  button?: { text: string; url: string };
+  /** Inbox preview text; defaults to the heading or the first line of the body. */
+  preheader?: string;
   header?: BulletproofEmailInput["header"];
   footer?: BulletproofEmailInput["footer"];
   theme?: BulletproofEmailInput["theme"];
+  title?: string;
 }
 
 /**
- * A ready-made signing-invitation email, the archetypal DocuSign-style
- * transactional message. Returns bulletproof HTML plus a plaintext part,
- * ready to hand to `EmailSender.enqueue`.
+ * A general-purpose transactional/marketing email: an optional heading and
+ * greeting, body copy, and an optional call-to-action button, rendered as
+ * bulletproof HTML with a plaintext alternative. Suitable for announcements,
+ * notifications, receipts, newsletters — any ordinary email.
  */
-export function renderSigningInvitation(input: SigningInvitationInput): RenderedEmail {
-  const greeting = input.signerName ? `Hi ${input.signerName},` : "Hello,";
-  const blocks: EmailBlock[] = [
-    { type: "heading", text: `${input.senderName} has requested your signature` },
-    { type: "text", text: greeting },
-    {
-      type: "text",
-      text: `Please review and sign **${input.documentName}**. It only takes a minute, and you can sign from any device.`,
-    },
-  ];
-  if (input.message) blocks.push({ type: "callout", text: input.message });
-  blocks.push({ type: "button", text: "Review & Sign Document", url: input.signUrl });
-  if (input.expiresAt) {
-    blocks.push({ type: "text", text: `This request expires on ${input.expiresAt}.`, muted: true });
-  }
-  blocks.push({
-    type: "text",
-    text: "If the button above does not work, copy and paste this link into your browser:",
-    muted: true,
-  });
-  blocks.push({ type: "text", text: `[${input.signUrl}](${input.signUrl})`, muted: true });
+export function renderSimpleEmail(input: SimpleEmailInput): RenderedEmail {
+  const blocks: EmailBlock[] = [];
+  if (input.heading) blocks.push({ type: "heading", text: input.heading });
+  if (input.greeting) blocks.push({ type: "text", text: input.greeting });
+  blocks.push(...blocksFromText(input.body));
+  if (input.button) blocks.push({ type: "button", text: input.button.text, url: input.button.url });
 
+  const preheader = input.preheader ?? input.heading ?? firstLine(input.body);
   const email: BulletproofEmailInput = {
-    preheader: `${input.senderName} has requested your signature on ${input.documentName}.`,
-    title: `Signature requested: ${input.documentName}`,
     blocks,
-    ...(input.header ? { header: input.header } : { header: { name: input.senderName } }),
-    ...(input.footer ? { footer: input.footer } : {}),
-    ...(input.theme ? { theme: input.theme } : {}),
-  };
-  return renderBulletproofEmail(email);
-}
-
-export interface SigningCompletedInput {
-  signerName?: string;
-  documentName: string;
-  /** URL to download the completed, signed document. */
-  downloadUrl: string;
-  completedAt?: string;
-  header?: BulletproofEmailInput["header"];
-  footer?: BulletproofEmailInput["footer"];
-  theme?: BulletproofEmailInput["theme"];
-}
-
-/** Receipt sent once every party has signed. */
-export function renderSigningCompleted(input: SigningCompletedInput): RenderedEmail {
-  const blocks: EmailBlock[] = [
-    { type: "heading", text: "Your document is fully signed" },
-    { type: "text", text: input.signerName ? `Hi ${input.signerName},` : "Hello," },
-    {
-      type: "text",
-      text: `Good news — **${input.documentName}** has been signed by all parties${
-        input.completedAt ? ` on ${input.completedAt}` : ""
-      }. A copy is attached, and you can also download it below.`,
-    },
-    { type: "button", text: "Download Signed Document", url: input.downloadUrl },
-  ];
-  const email: BulletproofEmailInput = {
-    preheader: `${input.documentName} has been completed and signed by all parties.`,
-    title: `Completed: ${input.documentName}`,
-    blocks,
+    ...(preheader ? { preheader } : {}),
+    ...(input.title ? { title: input.title } : input.heading ? { title: input.heading } : {}),
     ...(input.header ? { header: input.header } : {}),
     ...(input.footer ? { footer: input.footer } : {}),
     ...(input.theme ? { theme: input.theme } : {}),
   };
   return renderBulletproofEmail(email);
+}
+
+function firstLine(body: string): string {
+  const line = body.split(/\n/).map((l) => l.trim()).find(Boolean) ?? "";
+  return line.replace(/^#+\s*/, "").slice(0, 150);
 }

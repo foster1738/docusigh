@@ -45,13 +45,13 @@ sender.start();
 
 const result = await sender.enqueue(
   {
-    from: { email: process.env.EMAIL_FROM ?? "noreply@example.com", name: "DocuSigh" },
+    from: { email: process.env.EMAIL_FROM ?? "noreply@example.com", name: "Example" },
     to: [{ email: process.env.EMAIL_TO ?? "signer@example.com" }],
-    subject: "Please sign: Lease Agreement",
-    text: "Open https://example.com/sign/abc to review and sign.",
-    html: '<p>Open <a href="https://example.com/sign/abc">this link</a> to review and sign.</p>',
+    subject: "Welcome to Example",
+    text: "Thanks for signing up. Visit https://example.com/start to get started.",
+    html: '<p>Thanks for signing up. <a href="https://example.com/start">Get started</a>.</p>',
   },
-  { idempotencyKey: "envelope_abc:invite:signer@example.com", metadata: { envelopeId: "abc" } },
+  { idempotencyKey: "welcome:user@example.com", metadata: { campaign: "welcome" } },
 );
 console.log("enqueued", result);
 

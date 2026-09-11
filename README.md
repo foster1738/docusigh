@@ -1,8 +1,9 @@
-# @docusigh/email — bulletproof email sender
+# Bulletproof Mailer
 
-A transactional email sender for DocuSigh that does not lose, duplicate, or
-endlessly retry messages. It is a library, not a service: embed it in the app
-that needs to send signing invitations, reminders and receipts.
+A general-purpose transactional and bulk email sender that does not lose,
+duplicate, or endlessly retry messages. It is a library, not a service: embed
+it in any app that needs to send email — notifications, receipts, newsletters,
+announcements.
 
 ## What "bulletproof" means here
 
@@ -38,7 +39,7 @@ Postgres store.
 ## Quick start
 
 ```ts
-import { EmailSender, ResendProvider, PostmarkProvider, SmtpProvider, consoleLogger } from "@docusigh/email";
+import { EmailSender, ResendProvider, PostmarkProvider, SmtpProvider, consoleLogger } from "bulletproof-mailer";
 
 const sender = new EmailSender({
   providers: [
@@ -55,11 +56,11 @@ sender.start(); // background worker in this process
 
 await sender.enqueue(
   {
-    from: { email: "noreply@docusigh.com", name: "DocuSigh" },
-    to: [{ email: "signer@example.com", name: "Sam Signer" }],
-    subject: "Please sign: Lease Agreement",
-    text: "Open the link to review and sign.",
-    html: "<p>Open the link to review and sign.</p>",
+    from: { email: "noreply@example.com", name: "Example" },
+    to: [{ email: "user@example.com", name: "Sam Example" }],
+    subject: "Welcome to Example",
+    text: "Thanks for signing up.",
+    html: "<p>Thanks for signing up.</p>",
   },
   { idempotencyKey: `envelope:${envelopeId}:invite:${signerId}` },
 );
@@ -82,7 +83,7 @@ psql "$DATABASE_URL" -f src/store/schema.sql
 
 ```ts
 import pg from "pg";
-import { EmailSender, PostgresOutboxStore, PostgresSuppressionStore } from "@docusigh/email";
+import { EmailSender, PostgresOutboxStore, PostgresSuppressionStore } from "bulletproof-mailer";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const sender = new EmailSender({
@@ -103,7 +104,7 @@ Wire each provider's webhook to an endpoint that verifies the signature,
 normalises the payload and hands events to `handleBounce`:
 
 ```ts
-import { parseResendWebhook, verifySvixSignature } from "@docusigh/email";
+import { parseResendWebhook, verifySvixSignature } from "bulletproof-mailer";
 
 app.post("/webhooks/resend", express.text({ type: "*/*" }), async (req, res) => {
   const ok = verifySvixSignature(req.body, req.headers as never, process.env.RESEND_WEBHOOK_SECRET!);
@@ -132,7 +133,7 @@ outbox record `bounced`; soft bounces are ignored unless
   content, so two identical reminders sent an hour apart would be deduplicated.
 - **Deliverability.** The code cannot fix DNS: publish SPF, DKIM and DMARC for
   every sending domain on every provider in the chain, and use a dedicated
-  subdomain (e.g. `mail.docusigh.com`) so a reputation hit does not affect
+  subdomain (e.g. `mail.example.com`) so a reputation hit does not affect
   your root domain.
 
 ## Layout
@@ -162,27 +163,26 @@ styles, MSO conditionals, VML buttons, a hidden preheader, dark-mode hints —
 and escapes every caller-supplied value.
 
 ```ts
-import { EmailSender, renderSigningInvitation, toEmailMessage, ResendProvider } from "@docusigh/email";
+import { EmailSender, renderSimpleEmail, toEmailMessage, ResendProvider } from "bulletproof-mailer";
 
-const rendered = renderSigningInvitation({
-  senderName: "Acme Legal",
-  signerName: "Sam Signer",
-  documentName: "Mutual NDA",
-  signUrl: "https://app.docusigh.com/sign/9f2c1a",
-  message: "Thanks for partnering with us.",
-  expiresAt: "March 1, 2026",
-  footer: { lines: ["DocuSigh Inc."], address: "123 Market St, San Francisco, CA", unsubscribeUrl: "https://app.docusigh.com/u/9f2c1a" },
+const rendered = renderSimpleEmail({
+  heading: "Your order has shipped",
+  greeting: "Hi Sam,",
+  body: "Your package is on its way and should arrive **Friday**.\n\nTrack it any time using the button below.",
+  button: { text: "Track your order", url: "https://shop.example.com/track/abc" },
+  header: { name: "Example Shop" },
+  footer: { lines: ["Example Shop"], address: "123 Market St, San Francisco, CA", unsubscribeUrl: "https://shop.example.com/u/abc" },
 });
 
 const message = toEmailMessage(rendered, {
-  from: { email: "noreply@docusigh.com", name: "DocuSigh" },
-  to: [{ email: "signer@example.com", name: "Sam Signer" }],
-  subject: "Please sign: Mutual NDA",
-  tags: { envelope: "9f2c1a" },
+  from: { email: "noreply@example.com", name: "Example Shop" },
+  to: [{ email: "user@example.com", name: "Sam Example" }],
+  subject: "Your order has shipped",
+  tags: { campaign: "ship-notify" },
 });
 
 const sender = new EmailSender({ providers: [new ResendProvider({ apiKey: process.env.RESEND_API_KEY! })] });
-await sender.enqueue(message, { idempotencyKey: "envelope:9f2c1a:invite:signer@example.com" });
+await sender.enqueue(message, { idempotencyKey: "ship-notify:order-9f2c1a:user@example.com" });
 ```
 
 `renderBulletproofEmail(input)` renders arbitrary block content (headings,
@@ -255,7 +255,7 @@ so it appears only on the hosted artifact, not on a plain static host.
 hashing, with no secrets in the code.
 
 ```ts
-import { AuthService, MemoryAuthStore } from "@docusigh/email";
+import { AuthService, MemoryAuthStore } from "bulletproof-mailer";
 // or PostgresAuthStore(pool) with src/auth/schema.sql applied
 
 const auth = new AuthService({ store: new MemoryAuthStore() });
@@ -287,7 +287,7 @@ other column becomes a merge field) or **TXT** (one `email`, `email,Name`, or
 `Name <email>` per line):
 
 ```ts
-import { parseRecipients, sendBulk, AiDrafter } from "@docusigh/email";
+import { parseRecipients, sendBulk, AiDrafter } from "bulletproof-mailer";
 
 const { recipients, skipped } = parseRecipients(fileContents); // auto-detects CSV vs TXT
 ```

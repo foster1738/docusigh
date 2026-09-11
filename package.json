@@ -1,7 +1,7 @@
 {
-  "name": "@docusigh/email",
+  "name": "bulletproof-mailer",
   "version": "0.1.0",
-  "description": "Bulletproof transactional email sender: durable outbox, retries with jittered backoff, provider fallback, circuit breakers, rate limiting, idempotency, dead-lettering, and bounce suppression.",
+  "description": "Bulletproof general-purpose email sender: durable outbox, retries with jittered backoff, provider fallback, circuit breakers, rate limiting, idempotency, dead-lettering, bounce suppression, mail-merge, and AI drafting.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
