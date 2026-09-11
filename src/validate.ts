@@ -97,6 +97,7 @@ export const messageSchema = z
         }
       }),
     tags: z.record(z.string().max(64), z.string().max(256)).optional(),
+    priority: z.enum(["high", "normal", "low"]).optional(),
   })
   .refine((m) => (m.text && m.text.length > 0) || (m.html && m.html.length > 0), {
     message: "Either text or html body is required",

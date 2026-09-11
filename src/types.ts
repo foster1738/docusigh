@@ -32,7 +32,17 @@ export interface EmailMessage {
   headers?: Record<string, string>;
   /** Free-form tags forwarded to the provider when supported. */
   tags?: Record<string, string>;
+  /**
+   * Message importance. Sets the standard X-Priority / X-MSMail-Priority /
+   * Importance headers, which clients MAY honour or ignore. Defaults to
+   * "normal" (no headers emitted). Marking routine mail "high" trains
+   * recipients to ignore the flag and can hurt deliverability, so reserve
+   * "high" for genuinely time-critical messages.
+   */
+  priority?: EmailPriority;
 }
+
+export type EmailPriority = "high" | "normal" | "low";
 
 export type EmailStatus =
   | "queued"

@@ -67,24 +67,49 @@
     <select id="template">
       <option value="invitation">Signing invitation</option>
       <option value="completed">Signing completed</option>
+      <option value="custom">Custom email (AI draft)</option>
     </select>
 
-    <h2>Content</h2>
+    <div id="aiPanel" hidden>
+      <h2>Draft with AI</h2>
+      <label>What should this email say?</label>
+      <textarea id="aiPrompt" placeholder="e.g. Remind a client their invoice is 7 days overdue, friendly but firm, include a Pay Now button."></textarea>
+      <label>Output format</label>
+      <div class="row">
+        <label style="font-weight:400;margin:0;display:flex;align-items:center;gap:6px;"><input type="radio" name="aiFormat" value="html" checked style="width:auto;" /> HTML email</label>
+        <label style="font-weight:400;margin:0;display:flex;align-items:center;gap:6px;"><input type="radio" name="aiFormat" value="plain" style="width:auto;" /> Plain text</label>
+      </div>
+      <button class="btn primary" id="aiGenerate" style="margin-top:10px;width:100%;">Draft with AI</button>
+      <div class="hint" id="aiStatus"></div>
+    </div>
+
+    <div id="customFields" hidden>
+      <h2>Content</h2>
+      <label>Subject</label>
+      <input id="customSubject" value="" placeholder="Email subject line" />
+      <label>Body</label>
+      <textarea id="customBody" style="min-height:160px;" placeholder="Write your email. Blank lines separate paragraphs. **bold**, *italic*, and [link](https://…) are supported."></textarea>
+    </div>
+
+    <h2 id="contentHeading">Content</h2>
     <label>From / sender name</label>
     <input id="senderName" value="Acme Legal" />
-    <label>Recipient name</label>
-    <input id="signerName" value="Sam Signer" />
-    <label>Document name</label>
-    <input id="documentName" value="Mutual NDA" />
-    <label id="urlLabel">Signing URL</label>
-    <input id="signUrl" value="https://app.docusigh.com/sign/9f2c1a" />
-    <div id="messageField">
-      <label>Personal message (optional)</label>
-      <textarea id="message">Thanks for partnering with us — this should only take a minute.</textarea>
-    </div>
-    <div id="expiresField">
-      <label>Expires (optional)</label>
-      <input id="expiresAt" value="March 1, 2026" />
+    <div class="hint">Display name shown to recipients. When you actually send, the From address must be one you are authorised to use (a domain you own, with SPF/DKIM/DMARC set up).</div>
+    <div id="signingFields">
+      <label>Recipient name</label>
+      <input id="signerName" value="Sam Signer" />
+      <label>Document name</label>
+      <input id="documentName" value="Mutual NDA" />
+      <label id="urlLabel">Signing URL</label>
+      <input id="signUrl" value="https://app.docusigh.com/sign/9f2c1a" />
+      <div id="messageField">
+        <label>Personal message (optional)</label>
+        <textarea id="message">Thanks for partnering with us — this should only take a minute.</textarea>
+      </div>
+      <div id="expiresField">
+        <label>Expires (optional)</label>
+        <input id="expiresAt" value="March 1, 2026" />
+      </div>
     </div>
 
     <h2>Branding</h2>
@@ -137,17 +162,49 @@
   var $ = function (id) { return document.getElementById(id); };
   var lastRendered = { html: "", text: "" };
 
+  function commonParts() {
+    return {
+      header: { name: $("senderName").value },
+      footer: {
+        lines: $("footerName").value ? [$("footerName").value] : [],
+        address: $("footerAddress").value || undefined,
+        unsubscribeUrl: $("unsubUrl").value || undefined,
+      },
+      theme: { brandColor: $("brandColor").value, buttonTextColor: $("buttonTextColor").value },
+    };
+  }
+
+  // Turn the free-form body into renderer blocks: blank lines separate
+  // paragraphs; a lone [Label](url) line becomes a button.
+  function bodyToBlocks(body) {
+    var blocks = [];
+    var paras = body.split(/\n\s*\n/);
+    for (var i = 0; i < paras.length; i++) {
+      var p = paras[i].trim();
+      if (!p) continue;
+      var linkOnly = p.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/);
+      if (linkOnly) blocks.push({ type: "button", text: linkOnly[1], url: linkOnly[2] });
+      else blocks.push({ type: "text", text: p });
+    }
+    return blocks;
+  }
+
   function buildInput() {
     var template = $("template").value;
-    var footer = {
-      lines: $("footerName").value ? [$("footerName").value] : [],
-      address: $("footerAddress").value || undefined,
-      unsubscribeUrl: $("unsubUrl").value || undefined,
-    };
-    var theme = { brandColor: $("brandColor").value, buttonTextColor: $("buttonTextColor").value };
-    var header = { name: $("senderName").value };
-    var common = { header: header, footer: footer, theme: theme };
+    var common = commonParts();
 
+    if (template === "custom") {
+      var subject = $("customSubject").value;
+      var blocks = [];
+      if (subject) blocks.push({ type: "heading", text: subject });
+      blocks = blocks.concat(bodyToBlocks($("customBody").value));
+      if (blocks.length === 0) blocks.push({ type: "text", text: "Your email body will appear here.", muted: true });
+      return Bulletproof.renderBulletproofEmail(Object.assign({
+        preheader: subject || undefined,
+        title: subject || "Email",
+        blocks: blocks,
+      }, common));
+    }
     if (template === "completed") {
       return Bulletproof.renderSigningCompleted(Object.assign({
         signerName: $("signerName").value || undefined,
@@ -165,6 +222,11 @@
     }, common));
   }
 
+  function aiFormat() {
+    var checked = document.querySelector('input[name="aiFormat"]:checked');
+    return checked ? checked.value : "html";
+  }
+
   function render() {
     if (typeof Bulletproof === "undefined") return;
     try {
@@ -175,11 +237,28 @@
     $("frame").srcdoc = lastRendered.html;
     $("htmlOut").textContent = lastRendered.html;
     $("textOut").textContent = lastRendered.text;
-    // Adjust labels for the completion template.
-    var completed = $("template").value === "completed";
+    var template = $("template").value;
+    var completed = template === "completed";
+    var custom = template === "custom";
     $("urlLabel").textContent = completed ? "Download URL" : "Signing URL";
     $("messageField").hidden = completed;
     $("expiresField").hidden = completed;
+    $("signingFields").hidden = custom;
+    $("customFields").hidden = !custom;
+    $("contentHeading").hidden = custom; // custom mode has its own Content heading
+    // AI drafting only where the sample capability exists (the hosted artifact).
+    $("aiPanel").hidden = !(custom && aiAvailable);
+    // Plain-text drafts are read in the Plain text tab.
+    if (custom && aiFormat() === "plain") selectView("text");
+  }
+
+  function selectView(view) {
+    var seg = $("viewSeg");
+    [].forEach.call(seg.children, function (c) { c.classList.toggle("active", c.dataset.view === view); });
+    $("frame").hidden = view !== "preview";
+    $("htmlOut").hidden = view !== "html";
+    $("textOut").hidden = view !== "text";
+    $("widthSeg").hidden = view !== "preview";
   }
 
   function toast(msg) {
@@ -190,13 +269,7 @@
   // View switching
   $("viewSeg").addEventListener("click", function (e) {
     var b = e.target.closest("button"); if (!b) return;
-    [].forEach.call(this.children, function (c) { c.classList.remove("active"); });
-    b.classList.add("active");
-    var view = b.dataset.view;
-    $("frame").hidden = view !== "preview";
-    $("htmlOut").hidden = view !== "html";
-    $("textOut").hidden = view !== "text";
-    $("widthSeg").hidden = view !== "preview";
+    selectView(b.dataset.view);
   });
   $("widthSeg").addEventListener("click", function (e) {
     var b = e.target.closest("button"); if (!b) return;
@@ -247,6 +320,49 @@
     } else {
       blobDownload(name);
     }
+  });
+
+  // AI drafting via the claude.ai `sample` capability (hosted artifact only).
+  var aiAvailable = false;
+  var aiSample = null;
+  if (window.claude && typeof window.claude.use === "function") {
+    window.claude.use("sample").then(function (s) {
+      aiSample = s; aiAvailable = !!s; render();
+    }, function () {});
+  }
+
+  function setAiStatus(msg) { $("aiStatus").textContent = msg || ""; }
+
+  $("aiGenerate").addEventListener("click", function () {
+    if (!aiSample) { setAiStatus("AI drafting is unavailable here."); return; }
+    var prompt = $("aiPrompt").value.trim();
+    if (!prompt) { setAiStatus("Describe what the email should say first."); return; }
+    var format = aiFormat();
+    $("aiGenerate").disabled = true;
+    setAiStatus("Drafting…");
+    var instruction =
+      "You are helping draft a legitimate business/transactional email. " +
+      "Write a clear, honest email based on the request below. Do not impersonate a real person or organisation you were not told to, and do not write deceptive or misleading content. " +
+      "Return JSON with exactly two string fields: \"subject\" (a concise subject line) and \"body\". " +
+      "In the body, separate paragraphs with a blank line. You may use **bold**, *italic*, and [label](https://url) links. " +
+      "If a call to action fits, put it on its own line as a single [Button label](https://url) link. " +
+      (format === "plain"
+        ? "Keep the wording suitable for a plain-text email (no HTML)."
+        : "The body will be rendered as an HTML email.") +
+      "\n\nRequest: " + prompt;
+    aiSample.json([{ role: "user", content: instruction }], { modelTier: "default" }).then(
+      function (out) {
+        if (out && typeof out.subject === "string") $("customSubject").value = out.subject;
+        if (out && typeof out.body === "string") $("customBody").value = out.body;
+        setAiStatus("Draft ready — edit it below.");
+        selectView(format === "plain" ? "text" : "preview");
+        render();
+      },
+      function (err) {
+        var code = err && err.code;
+        setAiStatus(code === "rate_limited" ? "Rate limited — try again shortly." : code === "not_granted" ? "AI access was declined." : "Could not draft the email.");
+      }
+    ).then(function () { $("aiGenerate").disabled = false; });
   });
 
   // Re-render on any input change.

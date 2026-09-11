@@ -1,5 +1,6 @@
 import type { EmailAddress, EmailMessage, EmailProvider, ProviderSendResult } from "../types.js";
 import { httpJson, toBase64 } from "./http.js";
+import { effectiveHeaders, hasKeys } from "../priority.js";
 
 export interface ResendProviderOptions {
   apiKey: string;
@@ -27,7 +28,7 @@ export class ResendProvider implements EmailProvider {
       subject: message.subject,
       ...(message.text ? { text: message.text } : {}),
       ...(message.html ? { html: message.html } : {}),
-      ...(message.headers ? { headers: message.headers } : {}),
+      ...(hasKeys(effectiveHeaders(message)) ? { headers: effectiveHeaders(message) } : {}),
       ...(message.tags ? { tags: Object.entries(message.tags).map(([name, value]) => ({ name, value })) } : {}),
       ...(message.attachments
         ? {

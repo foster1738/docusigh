@@ -209,3 +209,42 @@ Rebuild the bundle locally after changing the renderer:
 ```bash
 npm run build:browser   # regenerates docs/app.bundle.js
 ```
+
+## Message priority
+
+Set `priority` on a message to mark importance. It emits the standard
+`X-Priority` / `X-MSMail-Priority` / `Importance` headers (and Nodemailer's
+native priority for SMTP); clients may honour or ignore them.
+
+```ts
+await sender.enqueue({ ...message, priority: "high" });
+```
+
+Reserve `"high"` for genuinely time-critical mail — flagging routine messages
+trains recipients to ignore it and can hurt deliverability.
+
+## Using several SMTP providers
+
+The provider list is a fallback chain, tried in order per attempt. Register up
+to five SMTP relays (own domain, SES, a backup MX, etc.) for redundancy:
+
+```ts
+const sender = new EmailSender({
+  providers: [
+    new SmtpProvider({ name: "primary", host: "smtp1.example.com", auth: { user, pass } }),
+    new SmtpProvider({ name: "backup", host: "smtp2.example.com", auth: { user, pass } }),
+    // …up to five
+  ],
+});
+```
+
+This is for reliability. Deliverability still comes from authenticating every
+sending domain (SPF, DKIM, DMARC), sending only to recipients who opted in, and
+honouring the suppression list — not from rotating relays to dodge limits.
+
+## AI drafting in the composer
+
+The hosted composer includes an optional "Custom email (AI draft)" mode: describe
+the email in a prompt, choose plain text or HTML, and it drafts a subject and
+body you can edit before rendering. It uses the claude.ai `sample` capability,
+so it appears only on the hosted artifact, not on a plain static host.

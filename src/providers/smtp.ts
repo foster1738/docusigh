@@ -3,6 +3,7 @@ import type SMTPTransport from "nodemailer/lib/smtp-transport/index.js";
 import type SMTPPool from "nodemailer/lib/smtp-pool/index.js";
 import type { EmailMessage, EmailProvider, ProviderSendResult } from "../types.js";
 import { EmailError, toEmailError } from "../errors.js";
+import { effectiveHeaders, hasKeys, nodemailerPriority } from "../priority.js";
 
 export interface SmtpProviderOptions {
   host: string;
@@ -60,7 +61,8 @@ export class SmtpProvider implements EmailProvider {
       subject: message.subject,
       ...(message.text ? { text: message.text } : {}),
       ...(message.html ? { html: message.html } : {}),
-      ...(message.headers ? { headers: message.headers } : {}),
+      ...(hasKeys(effectiveHeaders(message)) ? { headers: effectiveHeaders(message) } : {}),
+      ...(nodemailerPriority(message.priority) ? { priority: nodemailerPriority(message.priority) } : {}),
       ...(message.attachments
         ? {
             attachments: message.attachments.map((a) => ({

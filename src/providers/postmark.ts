@@ -1,6 +1,7 @@
 import type { EmailMessage, EmailProvider, ProviderSendResult } from "../types.js";
 import { EmailError } from "../errors.js";
 import { httpJson, toBase64 } from "./http.js";
+import { effectiveHeaders, hasKeys } from "../priority.js";
 import { formatAddress } from "./resend.js";
 
 /**
@@ -39,7 +40,7 @@ export class PostmarkProvider implements EmailProvider {
       ...(message.text ? { TextBody: message.text } : {}),
       ...(message.html ? { HtmlBody: message.html } : {}),
       MessageStream: this.options.messageStream ?? "outbound",
-      ...(message.headers ? { Headers: Object.entries(message.headers).map(([Name, Value]) => ({ Name, Value })) } : {}),
+      ...(hasKeys(effectiveHeaders(message)) ? { Headers: Object.entries(effectiveHeaders(message)).map(([Name, Value]) => ({ Name, Value })) } : {}),
       ...(message.tags?.tag ? { Tag: message.tags.tag } : {}),
       ...(message.tags ? { Metadata: message.tags } : {}),
       ...(message.attachments

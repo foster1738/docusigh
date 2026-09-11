@@ -1,6 +1,7 @@
 import type { EmailMessage, EmailProvider, ProviderSendResult } from "../types.js";
 import { EmailError, classifyHttpStatus, toEmailError } from "../errors.js";
 import { toBase64 } from "./http.js";
+import { effectiveHeaders, hasKeys } from "../priority.js";
 
 export interface SendGridProviderOptions {
   apiKey: string;
@@ -35,7 +36,7 @@ export class SendGridProvider implements EmailProvider {
       ...(message.replyTo ? { reply_to: message.replyTo } : {}),
       subject: message.subject,
       content,
-      ...(message.headers ? { headers: message.headers } : {}),
+      ...(hasKeys(effectiveHeaders(message)) ? { headers: effectiveHeaders(message) } : {}),
       ...(message.tags ? { custom_args: message.tags } : {}),
       ...(message.attachments
         ? {
