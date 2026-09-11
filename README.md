@@ -248,3 +248,85 @@ The hosted composer includes an optional "Custom email (AI draft)" mode: describ
 the email in a prompt, choose plain text or HTML, and it drafts a subject and
 body you can edit before rendering. It uses the claude.ai `sample` capability,
 so it appears only on the hosted artifact, not on a plain static host.
+
+## Users, roles and admin approval
+
+`AuthService` provides signup, admin approval, roles, sessions and password
+hashing, with no secrets in the code.
+
+```ts
+import { AuthService, MemoryAuthStore } from "@docusigh/email";
+// or PostgresAuthStore(pool) with src/auth/schema.sql applied
+
+const auth = new AuthService({ store: new MemoryAuthStore() });
+
+// The first signup bootstraps as an active admin; later signups are pending.
+await auth.signup({ email: "owner@acme.com", password: process.env.OWNER_PW! });
+const { user: admin, token } = await auth.login("owner@acme.com", process.env.OWNER_PW!);
+
+// New users wait for approval before they can log in.
+await auth.signup({ email: "teammate@acme.com", password: "…" });
+const [pending] = await auth.listPending(admin);
+await auth.approveUser(admin, pending.id);
+
+// Sessions: authenticate on each request, then log out.
+const me = await auth.authenticate(token);
+```
+
+- **Password hashing** uses scrypt by default (memory-hard, built in, no native
+  dependency). Swap in argon2 or bcrypt by implementing `PasswordHasher`.
+- **Sessions** are opaque random tokens; only the SHA-256 is stored, so a
+  database leak exposes no usable tokens.
+- **No committed secrets.** Provision the first admin with `bootstrapAdmin`
+  from an env-driven setup script, never hardcoded credentials.
+
+## Bulk sending: recipient files, mail-merge, and AI drafting
+
+Import a recipient list from **CSV** (a header row with an `email` column; every
+other column becomes a merge field) or **TXT** (one `email`, `email,Name`, or
+`Name <email>` per line):
+
+```ts
+import { parseRecipients, sendBulk, AiDrafter } from "@docusigh/email";
+
+const { recipients, skipped } = parseRecipients(fileContents); // auto-detects CSV vs TXT
+```
+
+Optionally draft the copy with AI (plain text or HTML), keeping `{{merge}}`
+tokens for personalisation:
+
+```ts
+const draft = await new AiDrafter().draft({
+  prompt: "Tell the customer their invoice {{invoice}} is ready, friendly and brief.",
+  format: "html",
+  senderName: "Acme Billing",
+});
+```
+
+Then send, personalising each message from that recipient's own fields:
+
+```ts
+await sendBulk(sender, {
+  from: { email: "billing@acme.com", name: "Acme Billing" },
+  subject: draft.subject,          // "Invoice {{invoice}} is ready"
+  html: draft.html,                 // merged values are HTML-escaped
+  text: draft.text,
+}, recipients, {
+  campaignId: "2026-09-invoices",   // per-recipient idempotency key; re-runs never double-send
+  senderName: "{{rep}} at Acme",    // optional per-send display name (merge fields allowed)
+});
+```
+
+Mail-merge inserts each recipient's own data from the list you provide (their
+name, their invoice number). Merged values are HTML-escaped in HTML bodies.
+`sendBulk` enqueues through the durable sender, so retries, provider fallback,
+and the suppression list all apply. Run `npm run example:bulk` for a working demo.
+
+### On sender identity and deliverability
+
+You can set an optional display name per send. The From **address** must be an
+identity you are authorised to use — a domain you own, with SPF, DKIM and DMARC
+configured. The sender does not spoof identities, rotate relays to evade limits,
+vary subjects or content to dodge spam filters, or fabricate invoice/reference
+numbers. Deliverability comes from authentication, a clean list, and honouring
+unsubscribes and bounces.
